@@ -25,8 +25,8 @@ ffmpeg -i <filename> -q:a 0 -map <stream index> <output_filename>
     FFmpeg will automatically try to convert to the output filename's extension, so just make sure it ends in MP3
 """
 
-import subprocess
 import re
+import asyncio
 from pathlib import Path
 
 VIDEO_EXTS = (".mkv", ".mp4")
@@ -37,7 +37,7 @@ class JapaneseNotFoundException(Exception):
     pass
 
 
-def get_japanese_audio_track(video_file: Path) -> str:
+async def get_japanese_audio_track(video_file: Path) -> str:
     """
     Returns the index ready to plug into ffmpeg
 
@@ -52,11 +52,17 @@ def get_japanese_audio_track(video_file: Path) -> str:
     """
     video = str(video_file)
     cmd = f'ffprobe "{video}"'
-    output = subprocess.run(cmd, capture_output=True)
+
+    # output = subprocess.run(cmd, capture_output=True)
+    proc = await asyncio.create_subprocess_shell(
+        cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    # don't ask me why ffprobe outputs to stderr...
+    _, stderr = await proc.communicate()
 
     # streams will be a list of tuples of the capture groups
     # eg. [ ("0:1", "eng"), ("0:2", "jpn") ]
-    streams = AUDIO_STREAM_RE.findall(str(output.stderr))
+    streams = AUDIO_STREAM_RE.findall(str(stderr))
 
     # if there's only one stream, assume it's Japanese
     if len(streams) == 0:
@@ -73,17 +79,16 @@ def get_japanese_audio_track(video_file: Path) -> str:
     raise JapaneseNotFoundException
 
 
-def extract_audio(video_file: Path) -> None:
+async def extract_audio(video_file: Path) -> None:
     # find the Japanese audio track
     try:
-        track_index = get_japanese_audio_track(video_file)
+        track_index = await get_japanese_audio_track(video_file)
     except JapaneseNotFoundException:
         print("No Japanese audio track found.")
         # TODO manual selection
         return
 
     # use ffmpeg to convert to mp3
-    # print(track_index)
 
     input_filename = str(video_file)
     output_filename = video_file.parent / (video_file.stem + ".mp3")
@@ -91,16 +96,26 @@ def extract_audio(video_file: Path) -> None:
     cmd = f'ffmpeg -i "{video_file}" -q:a 0 -map {track_index} "{output_filename}"'
 
     print(f"Extracting audio from {input_filename}")
-    subprocess.run(cmd, capture_output=True)
+
+    # Must use asyncio.create_subprocess_shell to make this properly run in parallel, subprocess.run() blocks
+    proc = await asyncio.create_subprocess_shell(
+        cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+    )
+    await proc.communicate()
+    print(f"Audio extracted to {output_filename}")
 
 
-def main(folder_to_convert: str) -> None:
+async def main(folder_to_convert: str) -> None:
     folder_to_convert = Path(folder_to_convert)
 
     print("Scanning folder for video files")
-    for video_file in folder_to_convert.iterdir():
-        if video_file.is_file() and video_file.suffix.lower() in VIDEO_EXTS:
-            extract_audio(video_file)
+    video_files = [
+        video_file
+        for video_file in folder_to_convert.iterdir()
+        if video_file.is_file() and video_file.suffix.lower() in VIDEO_EXTS
+    ]
+
+    await asyncio.gather(*[extract_audio(video_file) for video_file in video_files])
 
     print("Conversion complete!")
 
@@ -113,4 +128,4 @@ if __name__ == "__main__":
     parser.add_argument("folder_to_convert")
     args = parser.parse_args()
 
-    main(args.folder_to_convert)
+    asyncio.run(main(args.folder_to_convert))
