@@ -12,8 +12,8 @@ The method to detect Japanese is pretty naive. In summary:
 
 ## Requirements
 
-Python 3.6+
-ffmpeg - Must be installed and in the user's PATH.
+Python 3.6+  
+ffmpeg - Must be installed and in the user's PATH.  
 ffprobe - Comes with the ffmpeg package.
 
 ## Usage
