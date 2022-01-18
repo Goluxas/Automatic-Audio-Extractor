@@ -18,4 +18,4 @@ ffprobe - Comes with the ffmpeg package.
 
 ## Usage
 
-python extract_from_folder.py <folder of video files>
+python extract_from_folder.py \<folder of video files\>
