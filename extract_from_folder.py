@@ -28,6 +28,7 @@ ffmpeg -i <filename> -q:a 0 -map <stream index> <output_filename>
 import subprocess
 import re
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 VIDEO_EXTS = (".mkv", ".mp4")
 AUDIO_STREAM_RE = re.compile(r"Stream #(\d:\d)\(([a-zA-Z]+)\): Audio")
@@ -90,7 +91,7 @@ def extract_audio(video_file: Path) -> None:
     output_filename = str(output_filename)
     cmd = f'ffmpeg -i "{video_file}" -q:a 0 -map {track_index} "{output_filename}"'
 
-    print(f"Extracting audio from {input_filename}")
+    print(f"Extracting audio from {input_filename}\n")
     subprocess.run(cmd, capture_output=True)
 
 
@@ -98,9 +99,14 @@ def main(folder_to_convert: str) -> None:
     folder_to_convert = Path(folder_to_convert)
 
     print("Scanning folder for video files")
-    for video_file in folder_to_convert.iterdir():
-        if video_file.is_file() and video_file.suffix.lower() in VIDEO_EXTS:
-            extract_audio(video_file)
+    video_files = [
+        video_file
+        for video_file in folder_to_convert.iterdir()
+        if video_file.is_file() and video_file.suffix.lower() in VIDEO_EXTS
+    ]
+
+    with ThreadPoolExecutor() as executor:
+        executor.map(extract_audio, video_files)
 
     print("Conversion complete!")
 
@@ -113,4 +119,9 @@ if __name__ == "__main__":
     parser.add_argument("folder_to_convert")
     args = parser.parse_args()
 
+    import timeit
+
+    start = timeit.default_timer()
     main(args.folder_to_convert)
+    end = timeit.default_timer()
+    print(end - start)
